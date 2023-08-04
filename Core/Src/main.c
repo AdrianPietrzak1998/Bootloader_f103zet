@@ -26,6 +26,8 @@
 /* USER CODE BEGIN Includes */
 #include "string.h"
 #include "usbd_cdc_if.h"
+#include "aes.h"
+#include "key.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -49,6 +51,8 @@ extern USBD_HandleTypeDef hUsbDeviceFS;
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+struct AES_ctx ctx;
+
 uint32_t AppRegister;
 uint16_t FlashFlag;
 
@@ -113,6 +117,8 @@ void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 void jump_to_application(uint32_t const app_address);
 void deinit_peripherals(void);
+
+void updateIV(uint8_t* iv, const uint8_t* block);
 
 void respondOK(void)
 {
@@ -195,6 +201,8 @@ int main(void)
   /* USER CODE BEGIN 2 */
   if(AppRegister != 0x1234 && HAL_GPIO_ReadPin(BOOT_PIN_GPIO_Port, BOOT_PIN_Pin) && FlashFlag == FLASH_FLAG) jump_to_application(APP_START_ADDRESS);
   LastTickBootloderRunTime = HAL_GetTick();
+
+  AES_init_ctx_iv(&ctx, key, iv);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -372,6 +380,10 @@ void FlashWriteProcedure(void)
 		return;
 	}
 
+    AES_ctx_set_iv(&ctx, iv);
+    AES_CBC_decrypt_buffer(&ctx, Buffer_Packet.FlashBuffer_8, FlashInfoVariable.PacketSize);
+    updateIV(iv, iv_update);
+
 	for(uint32_t WordsCounter=0; WordsCounter<FlashInfoVariable.PacketSize/4; WordsCounter++)
 	{
 		uint32_t ActualAddr = APP_START_ADDRESS + FlashInfoVariable.PacketAddress + (WordsCounter * 4);
@@ -461,6 +473,12 @@ void jump_to_application(uint32_t const app_address) {
 
   __set_MSP(*((__IO uint32_t*) app_address)); // Stack pointer setup
   runApplication(); // Jump to application
+}
+
+void updateIV(uint8_t* iv, const uint8_t* block) {
+    for (int i = 0; i < 16; i++) {
+        iv[i] ^= block[i];
+    }
 }
 /* USER CODE END 4 */
 
